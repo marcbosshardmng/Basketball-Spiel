@@ -1,0 +1,87 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+dt = 0.00001
+tmax = 1000
+n = int(np.round(tmax / dt) + 1)
+C_d = 0.5
+rho = 1.225
+radius = 0.12
+A = np.pi * radius ** 2
+mass_ball = 0.6
+target_x = 5
+target_y = 3.05
+basket_length = 1
+backboard_width = 0.1
+backboard_height = 1.219
+backboard_x = 6
+BACKBOARD_Y_MIN = 3.05
+BACKBOARD_Y_MAX = 4.269
+initial_height = 1.75
+
+alpha_deg = float(input("Geben Sie den Abwurfwinkel in Grad ein: "))
+v0 = float(input("Geben Sie die Anfangsgeschwindigkeit in m/s ein: "))
+
+alpha = np.radians(alpha_deg)
+t = np.zeros(n)
+x = np.zeros(n)
+y = np.zeros(n)
+vx = np.zeros(n)
+vy = np.zeros(n)
+
+vx[0] = v0 * np.cos(alpha)
+vy[0] = v0 * np.sin(alpha)
+
+x[0] = 0
+y[0] = initial_height
+g = 9.81
+
+hit_basket = False
+for i in range(0, n - 1):
+    t[i + 1] = t[i] + dt
+    speed = np.sqrt(vx[i] ** 2 + vy[i] ** 2)
+    drag_force = 0.5 * C_d * rho * A * speed
+
+    ax = 0 - drag_force * vx[i] / mass_ball
+    ay = -g - drag_force * vy[i] / mass_ball
+    vx[i + 1] = vx[i] + ax * dt
+    vy[i + 1] = vy[i] + ay * dt
+    x[i + 1] = x[i] + vx[i + 1] * dt
+    y[i + 1] = y[i] + vy[i + 1] * dt
+
+    if backboard_x <= x[i + 1] <= backboard_x + backboard_width:
+        if BACKBOARD_Y_MIN <= y[i + 1] <= BACKBOARD_Y_MAX:
+            vx[i + 1] = -vx[i + 1]
+
+    if target_x <= x[i + 1] <= target_x + basket_length and abs(y[i + 1] - target_y) < 0.1 and vy[i + 1] < 0:
+        hit_basket = True
+        break
+    if target_x <= x[i + 1] <= target_x + basket_length and abs(y[i + 1] - target_y) < 0.1 and vy[i + 1] > 0:
+        hit_basket = False
+        break
+    if y[i + 1] <= 0:
+        break
+
+max_distance = max(x)
+
+if hit_basket:
+    print(f"Der Ball hat den Korb bei einer wurfdistanz von {target_x} bis {target_x + basket_length} meter bei einer Korbhöhe von {target_y} meter getroffen:)")
+    print(f"Die maximale geworfene Distanz beträgt {max_distance:.2f} Meter.")
+else:
+    print("Pech gehabt")
+    print(f"Die maximale geworfene Distanz beträgt {max_distance:.2f} Meter.")
+
+fig, ax = plt.subplots()
+ax.plot(x[:i + 2], y[:i + 2], label='Wurfbahn')
+
+ax.plot([target_x, target_x + basket_length], [target_y, target_y], color='red', label='Korb', lw=3)
+
+backboard_rect = plt.Rectangle(
+    (backboard_x, BACKBOARD_Y_MIN),backboard_width, BACKBOARD_Y_MAX - BACKBOARD_Y_MIN,
+    color='blue', label='Backboard')
+ax.add_patch(backboard_rect)
+
+ax.set(xlabel='distanz (m)', ylabel='höhe(m)', title='Basketball Wurfbahn')
+ax.legend()
+ax.grid()
+plt.show()

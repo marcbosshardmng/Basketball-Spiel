@@ -1,0 +1,196 @@
+import pygame
+import numpy as np
+
+pygame.init()
+
+WIDTH, HEIGHT = 700, 500
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Basketball Spiel")
+
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLACK = (0, 0, 0)
+BLUE = (0, 0, 255)
+GRAY = (200, 200, 200)
+
+clock = pygame.time.Clock()
+
+font = pygame.font.SysFont("Arial", 20)
+
+target_x = 5
+target_y = 3.05
+basket_width = 1
+player_width = 50
+player_height = 50
+player_x = 0
+player_y = HEIGHT - player_height
+player_velocity_x = 5
+player_velocity_y = 0
+g = 9.81
+jump_force = -250
+mass = 70
+is_jumping = False
+
+backboard_width = 0.02
+backboard_height = 1.219
+backboard_x = 6
+BACKBOARD_Y_MIN = 3.05
+BACKBOARD_Y_MAX = 4.269
+
+hits = 0
+attempts = 0
+
+C_d = 0.5
+rho = 1.225
+radius = 0.12
+A = np.pi * radius ** 2
+mass_ball = 0.6
+dt = 0.0001
+tmax = 20
+
+
+def draw_text(text, x, y):
+    label = font.render(text, True, BLACK)
+    screen.blit(label, (x, y))
+
+def simulate_throw(angle_deg, velocity, start_x, start_y):
+    n = int(np.round(tmax / dt) + 1)
+    t = np.zeros(n)
+    x = np.zeros(n)
+    y = np.zeros(n)
+    vx = np.zeros(n)
+    vy = np.zeros(n)
+
+    alpha = np.radians(angle_deg)
+    vx[0] = velocity * np.cos(alpha)
+    vy[0] = velocity * np.sin(alpha)
+    x[0] = start_x
+    y[0] = start_y
+
+    hit_basket = False
+
+    for i in range(n - 1):
+        t[i + 1] = t[i] + dt
+        speed = np.sqrt(vx[i] ** 2 + vy[i] ** 2)
+        drag_force = 0.5 * C_d * rho * A * speed
+
+        ax = 0-drag_force * vx[i] / mass_ball
+        ay = -g - drag_force * vy[i] / mass_ball
+
+        vx[i + 1] = vx[i] + ax * dt
+        vy[i + 1] = vy[i] + ay * dt
+
+        x[i + 1] = x[i] + vx[i + 1] * dt
+        y[i + 1] = y[i] + vy[i + 1] * dt
+
+        if backboard_x <= x[i + 1] <= backboard_x + backboard_width:
+            if BACKBOARD_Y_MIN <= y[i + 1] <= BACKBOARD_Y_MAX:
+                vx[i + 1] = -vx[i + 1]
+
+        if target_x <= x[i + 1] <= target_x + basket_width and abs(y[i + 1] - target_y) < 0.1 and vy[i + 1] < 0:
+            return (x[:i + 2], y[:i + 2]), True
+        if target_x <= x[i + 1] <= target_x + basket_width and abs(y[i + 1] - target_y) < 0.1 and vy[i + 1] > 0:
+            return (x[:i + 2], y[:i + 2]), False
+        if y[i + 1] <= 0:
+            break
+
+    return (x, y), hit_basket
+
+
+def draw_game_screen(angle_deg, velocity, trajectory, hit_basket, shooting):
+    screen.fill(WHITE)
+    for x in range(0, WIDTH, 50):
+        pygame.draw.line(screen, GRAY, (x, 0), (x, HEIGHT))
+        if x % 100 == 0:
+            draw_text(str(x // 100), x + 5, HEIGHT - 20)
+    for y in range(0, HEIGHT, 50):
+        pygame.draw.line(screen, GRAY, (0, y), (WIDTH, y))
+        if y % 100 == 0:
+            draw_text(str((HEIGHT - y) // 100), 5, y - 20)
+
+    pygame.draw.rect(screen, BLUE, (backboard_x * 100, HEIGHT - BACKBOARD_Y_MAX * 100, backboard_width * 100,
+                                    (BACKBOARD_Y_MAX - BACKBOARD_Y_MIN) * 100))
+    pygame.draw.rect(screen, RED, (int(target_x * 100), HEIGHT - int(target_y * 100), int(basket_width * 100), 5))
+    pygame.draw.rect(screen, BLUE, (player_x, player_y, player_width, player_height))
+
+    if trajectory:
+        for i in range(len(trajectory[0])):
+            color = GREEN if not hit_basket else (0, 255, 0)
+            pygame.draw.circle(screen, color, (int(trajectory[0][i] * 100), HEIGHT - int(trajectory[1][i] * 100)), 3)
+
+    if shooting:
+        if hit_basket:
+            draw_text("Treffer!", WIDTH // 2 - 100, HEIGHT // 2)
+        else:
+            draw_text("Pech gehabt", WIDTH // 2 - 120, HEIGHT // 2)
+
+    if attempts > 0:
+        hit_rate = (hits / attempts) * 100
+        draw_text(f"Hit Rate: {hit_rate:.2f}%", WIDTH - 250, 20)
+    velocity_kmh = velocity * 3.6
+    draw_text(f"Winkel: {angle_deg:.2f}°", WIDTH - 250, 40)
+    draw_text(f"Geschwindigkeit: {velocity_kmh:.2f} km/h", WIDTH - 250, 60)
+
+    pygame.display.update()
+
+
+angle_deg = 53.4
+velocity = 10.5
+running = True
+shooting = False
+trajectory = []
+hit_basket = False
+time_since_shoot = 0
+fps = 60
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN and not shooting:
+            start_x = player_x / 100 + player_width / 100
+            start_y = (HEIGHT - player_y - player_height / 2) / 100
+            trajectory, hit_basket = simulate_throw(angle_deg, velocity, start_x, start_y)
+            shooting = True
+            attempts += 1
+            if hit_basket:
+                hits += 1
+            time_since_shoot = 0
+
+    keys = pygame.key.get_pressed()
+    if keys[pygame.K_LEFT]:
+        angle_deg = max(-90, angle_deg - 0.1)
+    if keys[pygame.K_RIGHT]:
+        angle_deg = min(90, angle_deg + 0.1)
+    if keys[pygame.K_DOWN]:
+        velocity = max(1, velocity - 0.1)
+    if keys[pygame.K_UP]:
+        velocity += 0.1
+    if keys[pygame.K_a]:
+        player_x -= player_velocity_x * 1.2
+    if keys[pygame.K_d]:
+        player_x += player_velocity_x * 1.2
+    if (keys[pygame.K_SPACE] or keys[pygame.K_w]) and not is_jumping:
+        player_velocity_y = jump_force
+        is_jumping = True
+    player_x = max(0, min(WIDTH - player_width, player_x))
+    if is_jumping:
+        gravity_force = g * mass
+        player_velocity_y += gravity_force * 1/fps
+        player_y += player_velocity_y * 1/fps
+
+        if player_y >= HEIGHT - player_height - 10:
+            player_y = HEIGHT - player_height - 10
+            is_jumping = False
+            player_velocity_y = 0
+
+    if shooting:
+        time_since_shoot += clock.get_time() / 1000
+        if time_since_shoot >= 1:
+            shooting = False
+            trajectory = []
+
+    draw_game_screen(angle_deg, velocity, trajectory, hit_basket, shooting)
+    clock.tick(fps)
+
+pygame.quit()
